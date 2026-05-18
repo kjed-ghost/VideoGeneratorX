@@ -42,3 +42,16 @@ ContentFlow is a full-stack web application designed to automate the video creat
 ## License
 
 MIT
+
+## Supabase Configuration
+
+This project is configured to use the following Supabase instance:
+- **Project URL:** https://enjkimdilgrpyfvajmfb.supabase.co
+- **Project Ref:** enjkimdilgrpyfvajmfb
+
+### Local Development CLI Setup
+```bash
+supabase login
+supabase init
+supabase link --project-ref enjkimdilgrpyfvajmfb
+```

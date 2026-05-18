@@ -28,26 +28,31 @@ module.exports = async (req, res) => {
   let script = "";
 
   try {
+    let finalPrompt = "";
+    if (video_type === 'video_prompt') {
+      finalPrompt = context; // Context already contains the specific prompt request from frontend
+    } else {
+      finalPrompt = `You are a video script writer. Based on this research context: ${context}, write a ${video_type} video script. For Reel: punchy, hook in first 3 seconds, 150 words max. For Long Form: structured with intro, 3 main points, and CTA, 800–1200 words.`;
+    }
+
     if (geminiKey) {
       const genAI = new GoogleGenerativeAI(geminiKey);
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-      const prompt = `You are a video script writer. Based on this research context: ${context}, write a ${video_type} video script. For Reel: punchy, hook in first 3 seconds, 150 words max. For Long Form: structured with intro, 3 main points, and CTA, 800–1200 words.`;
-      const result = await model.generateContent(prompt);
+      const result = await model.generateContent(finalPrompt);
       script = result.response.text();
     } else if (groqKey) {
-      // Fallback to Groq via fetch
       const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: { "Authorization": `Bearer ${groqKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "llama3-70b-8192",
-          messages: [{ role: "system", content: "You are a professional video script writer." }, { role: "user", content: context }]
+          messages: [{ role: "system", content: "You are a professional assistant." }, { role: "user", content: finalPrompt }]
         })
       });
       const data = await response.json();
       script = data.choices[0].message.content;
     } else {
-      return res.status(400).json({ error: 'No AI keys configured in Settings' });
+      return res.status(400).json({ error: 'No AI keys configured' });
     }
 
     res.status(200).json({ script });

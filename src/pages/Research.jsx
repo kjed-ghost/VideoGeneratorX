@@ -123,7 +123,7 @@ export default function Research({ onNext }) {
                 You have selected {selectedSources.length} sources to use as context for your script.
               </p>
               <button
-                onClick={onNext}
+                onClick={() => onNext(selectedSources)}
                 disabled={selectedSources.length === 0}
                 className="w-full bg-white text-indigo-700 font-bold py-3 rounded-xl hover:bg-indigo-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >

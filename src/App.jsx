@@ -10,6 +10,7 @@ import Editor from './pages/Editor';
 import Publish from './pages/Publish';
 import Auth from './pages/Auth';
 import Projects from './pages/Projects';
+import Onboarding from './pages/Onboarding';
 import { supabase } from './lib/supabase';
 
 function App() {
@@ -18,39 +19,61 @@ function App() {
   const [currentProject, setCurrentProject] = useState(null);
   const [completedSteps, setCompletedSteps] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      setLoading(false);
+      if (session) checkOnboarding(session.user.id);
+      else setLoading(false);
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      if (session) checkOnboarding(session.user.id);
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
+  const checkOnboarding = async (userId) => {
+    const { data } = await supabase
+      .from('profiles')
+      .select('api_keys')
+      .eq('id', userId)
+      .single();
+
+    // If no keys are set, show onboarding
+    if (!data?.api_keys || Object.keys(data.api_keys).length === 0) {
+      setShowOnboarding(true);
+      setCurrentStep('onboarding');
+    }
+    setLoading(false);
+  };
+
   const saveProject = useCallback(async (data) => {
     if (!currentProject) return;
 
-    await supabase
+    const { data: updated, error } = await supabase
       .from('projects')
       .update({
         data: { ...currentProject.data, ...data },
         updated_at: new Date().toISOString()
       })
-      .eq('id', currentProject.id);
+      .eq('id', currentProject.id)
+      .select()
+      .single();
+
+    if (updated) setCurrentProject(updated);
   }, [currentProject]);
 
   useEffect(() => {
     if (!currentProject) return;
     const interval = setInterval(() => {
       saveProject({});
-    }, 30000); // Autosave every 30s
+    }, 30000);
     return () => clearInterval(interval);
   }, [currentProject, saveProject]);
 
@@ -86,6 +109,13 @@ function App() {
   };
 
   const renderStep = () => {
+    if (showOnboarding || currentStep === 'onboarding') {
+      return <Onboarding onComplete={() => {
+        setShowOnboarding(false);
+        setCurrentStep('projects');
+      }} />;
+    }
+
     switch (currentStep) {
       case 'dashboard':
         return <Dashboard onStartProject={handleStartProject} />;
@@ -94,39 +124,53 @@ function App() {
           onNew={handleStartProject}
           onResume={(p) => {
             setCurrentProject(p);
-            setCurrentStep('research'); // or logic to resume from last step
+            // Resume at the right step based on project data
+            const lastStep = p.data?.lastStep || 'research';
+            setCurrentStep(lastStep);
           }}
         />;
       case 'research':
         return <Research onNext={(data) => {
-          saveProject({ research: data });
+          saveProject({ research: data, lastStep: 'script' });
           setCompletedSteps([...new Set([...completedSteps, 'research'])]);
           setCurrentStep('script');
         }} />;
       case 'script':
-        return <Script onNext={(data) => {
-          saveProject({ script: data });
-          setCompletedSteps([...new Set([...completedSteps, 'script'])]);
-          setCurrentStep('voice');
-        }} />;
+        return <Script
+          context={currentProject?.data?.research}
+          onNext={(data) => {
+            saveProject({ script: data, lastStep: 'voice' });
+            setCompletedSteps([...new Set([...completedSteps, 'script'])]);
+            setCurrentStep('voice');
+          }}
+        />;
       case 'voice':
-        return <Voice onNext={(data) => {
-          saveProject({ audio: data });
-          setCompletedSteps([...new Set([...completedSteps, 'voice'])]);
-          setCurrentStep('video');
-        }} />;
+        return <Voice
+          script={currentProject?.data?.script}
+          onNext={(data) => {
+            saveProject({ audio: data, lastStep: 'video' });
+            setCompletedSteps([...new Set([...completedSteps, 'voice'])]);
+            setCurrentStep('video');
+          }}
+        />;
       case 'video':
-        return <Video onNext={(data) => {
-          saveProject({ video: data });
-          setCompletedSteps([...new Set([...completedSteps, 'video'])]);
-          setCurrentStep('editor');
-        }} />;
+        return <Video
+          script={currentProject?.data?.script}
+          onNext={(data) => {
+            saveProject({ video: data, lastStep: 'editor' });
+            setCompletedSteps([...new Set([...completedSteps, 'video'])]);
+            setCurrentStep('editor');
+          }}
+        />;
       case 'editor':
-        return <Editor onNext={(data) => {
-          saveProject({ editor: data });
-          setCompletedSteps([...new Set([...completedSteps, 'editor'])]);
-          setCurrentStep('publish');
-        }} />;
+        return <Editor
+          project={currentProject}
+          onNext={(data) => {
+            saveProject({ editor: data, lastStep: 'publish' });
+            setCompletedSteps([...new Set([...completedSteps, 'editor'])]);
+            setCurrentStep('publish');
+          }}
+        />;
       case 'publish':
         return <Publish projectData={currentProject} />;
       case 'settings':
@@ -138,13 +182,16 @@ function App() {
 
   return (
     <div className="flex h-screen bg-slate-900 text-slate-100 overflow-hidden">
-      <Sidebar
-        currentStep={currentStep}
-        onStepChange={setCurrentStep}
-        completedSteps={completedSteps}
-      />
-      <main className="flex-1 overflow-y-auto p-8">
-        <div className="max-w-5xl mx-auto">
+      {!showOnboarding && currentStep !== 'onboarding' && (
+        <Sidebar
+          currentStep={currentStep}
+          onStepChange={setCurrentStep}
+          completedSteps={completedSteps}
+          userEmail={session.user.email}
+        />
+      )}
+      <main className="flex-1 overflow-y-auto">
+        <div className={showOnboarding || currentStep === 'onboarding' ? "" : "max-w-5xl mx-auto p-8"}>
           {renderStep()}
         </div>
       </main>
